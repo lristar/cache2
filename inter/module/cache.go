@@ -9,7 +9,7 @@ import (
 
 type CacheTableType int
 
-var tableMap =map[string]ICacheTable{}
+var tableMap =map[string]*CacheSimple{}
 
 type ICacheTable interface {
 	Value(key string)interface{}
@@ -34,18 +34,17 @@ type CacheSimple struct {
 	checkList list.List
 }
 
-func NewDefaultCacheTable(loadData func(key string,arg ...interface{})(*CacheItem,error))ICacheTable{
+func NewDefaultCacheTable()*CacheSimple{
 	if v,ok:=tableMap[DefaultName];ok{
 		return v
 	}
 
 	t :=&CacheSimple{
-		mx:&sync.Mutex{},
+		mx: &sync.Mutex{},
 		name:DefaultName,
-		types: SIMPLECACHE,
 		items:make(map[string]*CacheItem,0),
 		reloadTime: 15*time.Second,
-		loadData:loadData,
+		loadData:nil,
 		logger: log.Default(),
 	}
 	tableMap[DefaultName] = t
@@ -53,10 +52,22 @@ func NewDefaultCacheTable(loadData func(key string,arg ...interface{})(*CacheIte
 	return t
 }
 
+func (c *CacheSimple)SetReloadTime(reload time.Duration)*CacheSimple{
+	c.reloadTime = reload
+	return c
+}
+
+func (c *CacheSimple)SetLoadDataFun(loadData func(key string,arg ...interface{})(*CacheItem,error))*CacheSimple{
+	c.loadData = loadData
+	return c
+}
+
 func (c *CacheSimple)Value(key string)interface{}{
+	c.RLock()
 	if v,ok:=c.items[key];ok{
 		return v
 	}
+	c.RUnlock()
 	Item,err:=c.loadData(key)
 	if err!=nil{
 		return nil
@@ -73,10 +84,10 @@ func (c *CacheSimple)Delete(){
 }
 
 func (c *CacheSimple)addItem(key string,cacheItem *CacheItem){
-	c.RLock()
-	defer c.RUnlock()
 	cacheItem.ExpiredTime=time.Now().Add(c.reloadTime)
+	c.Lock()
 	c.items[key] = cacheItem
+	c.Unlock()
 	c.addCheckList(cacheItem,nil)
 }
 
@@ -91,10 +102,13 @@ func (c *CacheSimple)addCheckList(cacheItem *CacheItem,element *list.Element){
 }
 
 func (c *CacheSimple)watch(){
+
 	c.logger.Println("watching .........")
-	for c.checkList.Back() == nil{
+
+	for c.checkList.Back() == nil || c.loadData ==nil{
 
 	}
+	c.logger.Println("start .........")
 	for c.checkList.Back()!=nil{
 		ele :=c.checkList.Back()
 		if v,ok :=ele.Value.(*CacheItem);ok{

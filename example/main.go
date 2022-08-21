@@ -17,8 +17,7 @@ func main() {
 			Value: v,
 		},nil
 	}
-	module.NewDefaultCacheTable(f)
-	a := module.NewDefaultCacheTable(f)
+	a := module.NewDefaultCacheTable().SetLoadDataFun(f).SetReloadTime(time.Second*30)
 	fmt.Println(a.Value("aaa"))
 	time.Sleep(time.Second*5)
 	fmt.Println(a.Value("bbb"))
